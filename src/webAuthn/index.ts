@@ -31,8 +31,10 @@ import type {
   WebAuthnCreation,
   WebAuthnRegistration,
   WebAuthnRequest,
-  B64UrlString,
 } from "@/webAuthn/typing";
+import json from "@/util/json";
+
+import type { B64UrlString } from "@/util/typing";
 
 export const createWebAuthn = async (
   params?: WebAuthnCreation
@@ -70,15 +72,15 @@ export const createWebAuthn = async (
     challenge: challengeBase64Url,
     pubKeyCredParams: [
       {
+        alg: defaultWebAuthn.pubKeyCredAlgEdDsa,
+        type: defaultWebAuthn.pubKeyCredType,
+      },
+      {
         alg: defaultWebAuthn.pubKeyCredAlgEs256,
         type: defaultWebAuthn.pubKeyCredType,
       },
       {
         alg: defaultWebAuthn.pubKeyCredAlgRs256,
-        type: defaultWebAuthn.pubKeyCredType,
-      },
-      {
-        alg: defaultWebAuthn.pubKeyCredAlgEdDsa,
         type: defaultWebAuthn.pubKeyCredType,
       },
       {
@@ -135,6 +137,64 @@ export const createWebAuthn = async (
   }
 
   const credPubKeyUint8Arr = authData.credentialPublicKey!;
+  // Refer: node_modules/@simplewebauthn/server/esm/helpers/convertCOSEtoPKCS.js
+  const pubKeyStruct =
+    isoCBOR.decodeFirst<cose.COSEPublicKey>(credPubKeyUint8Arr);
+  const pubKeyKty = pubKeyStruct.get(cose.COSEKEYS.kty);
+  const pubKeyAlg = pubKeyStruct.get(cose.COSEKEYS.alg);
+  console.log(
+    `[ttt][COSEPublicKey] pubKeyKty: ${pubKeyKty}\npubKeyAlg: ${pubKeyAlg}`
+  );
+
+  // EdDSA, e.g.: Ed25519
+  if (cose.isCOSEPublicKeyOKP(pubKeyStruct)) {
+    const pubKeyCrv = pubKeyStruct.get(cose.COSEKEYS.crv);
+    const pubKeyXUint8Arr = pubKeyStruct.get(cose.COSEKEYS.x);
+    if (pubKeyXUint8Arr) {
+      // x: 密鑰對的公鑰。它不是橢圓曲線的 x 坐標，而是密鑰對的公鑰表示方式。
+      const pubKeyXHex = `0x${isoUint8Array.toHex(pubKeyXUint8Arr)}`;
+      const pubKeyXBigInt = BigInt(pubKeyXHex);
+      console.log(
+        `[ttt][COSEPublicKeyOKP] pubKeyCrv: ${pubKeyCrv}\npubKeyXHex: ${pubKeyXHex}\npubKeyXBigInt${pubKeyXBigInt}`
+      );
+    }
+  }
+
+  // ECDSA, e.g.: ES256, ES384, ES512
+  if (cose.isCOSEPublicKeyEC2(pubKeyStruct)) {
+    const pubKeyCrv = pubKeyStruct.get(cose.COSEKEYS.crv);
+    const pubKeyXUint8Arr = pubKeyStruct.get(cose.COSEKEYS.x);
+    const pubKeyYUint8Arr = pubKeyStruct.get(cose.COSEKEYS.y);
+    if (pubKeyXUint8Arr && pubKeyYUint8Arr) {
+      // x: 橢圓曲線上的 x 坐標。
+      // y: 橢圓曲線上的 y 坐標。
+      const pubKeyXHex = `0x${isoUint8Array.toHex(pubKeyXUint8Arr)}`;
+      const pubKeyYHex = `0x${isoUint8Array.toHex(pubKeyYUint8Arr)}`;
+      const pubKeyXBigInt = BigInt(pubKeyXHex);
+      const pubKeyYBigInt = BigInt(pubKeyYHex);
+      console.log(
+        `[ttt][COSEPublicKeyEC2] pubKeyCrv: ${pubKeyCrv}\npubKeyXHex: ${pubKeyXHex}\npubKeyYHex: ${pubKeyYHex}\npubKeyXBigInt: ${pubKeyXBigInt}\npubKeyYBigInt: ${pubKeyYBigInt}`
+      );
+    }
+  }
+
+  // RS256
+  if (cose.isCOSEPublicKeyRSA(pubKeyStruct)) {
+    const pubKeyNUint8Arr = pubKeyStruct.get(cose.COSEKEYS.n);
+    const pubKeyEUint8Arr = pubKeyStruct.get(cose.COSEKEYS.e);
+    if (pubKeyNUint8Arr && pubKeyEUint8Arr) {
+      // e: 公鑰指數（exponent），通常稱為加密指數或公開指數。它是用於加密和驗證簽名的數字。
+      // n: 模數（modulus），它是由兩個大質數的乘積構成，並且用於加密和簽名驗證的基礎數字。
+      const pubKeyNHex = `0x${isoUint8Array.toHex(pubKeyNUint8Arr)}`;
+      const pubKeyEHex = `0x${isoUint8Array.toHex(pubKeyEUint8Arr)}`;
+      const pubKeyNBigInt = BigInt(pubKeyNHex);
+      const pubKeyEBigInt = BigInt(pubKeyEHex);
+      console.log(
+        `[ttt][COSEPublicKeyRSA] pubKeyNHex: ${pubKeyNHex}\npubKeyEHex: ${pubKeyEHex}\npubKeyNBigInt: ${pubKeyNBigInt}\npubKeyEBigInt:${pubKeyEBigInt}`
+      );
+    }
+  }
+
   const credPubKeyObjUint8Arr = convertCOSEtoPKCS(credPubKeyUint8Arr);
   const credPubKeyXLen = (credPubKeyObjUint8Arr.length - 1) / 2; // tag length = 1
 
@@ -184,10 +244,13 @@ export const requestWebAuthn = async (
   const clientDataJsonUrlB64 = authResJson.response.clientDataJSON;
   const clientDataJsonUtf8 = isoBase64URL.toUTF8String(clientDataJsonUrlB64);
   const sigUrlB64 = authResJson.response.signature;
+  console.log(`[ttt] sigUrlB64: ${sigUrlB64}`);
+
   const sigUint8Arr = isoBase64URL.toBuffer(sigUrlB64);
   const sigPubKey = decodeCredentialPublicKey(sigUint8Arr);
+  console.log(`[ttt] sigPubKey: ${json.stringify(sigPubKey, null, 2)}`);
   const sigKty = sigPubKey.get(cose.COSEKEYS.kty);
-  const sigAlg = sigPubKey.get(cose.COSEKEYS.kty);
+  const sigAlg = sigPubKey.get(cose.COSEKEYS.alg);
   console.log(`[ttt][COSEPublicKey] sigKty: ${sigKty}\nsigAlg: ${sigAlg}`);
 
   if (cose.isCOSEPublicKeyOKP(sigPubKey)) {

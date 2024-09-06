@@ -1,6 +1,4 @@
-export type B64UrlString = string;
-export type BigNumberish = string | number | bigint;
-export type HexString = string;
+import type { B64UrlString, BigNumberish, HexString } from "@/util/typing";
 
 /* Input */
 
