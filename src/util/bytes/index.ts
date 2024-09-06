@@ -1,0 +1,43 @@
+import type { HexString } from "@/util/typing";
+
+export class Bytes extends Uint8Array {
+  public static isHex(data: string) {
+    return /^(0x)?[0-9A-Fa-f]+$/g.test(data);
+  }
+
+  public static wrap(data: Buffer | Uint8Array | HexString) {
+    if (typeof data === "string") {
+      // Data is hex string
+      if (Bytes.isHex(data)) {
+        return new Bytes(
+          Uint8Array.from(Buffer.from(data.replace(/^0x/g, ""), "hex"))
+        );
+      }
+      // Data is plain text
+      return new Bytes(Uint8Array.from(Buffer.from(data)));
+    }
+    // Data is Buffer or Uint8Array
+    return new Bytes(Uint8Array.from(data));
+  }
+
+  public concat(bytes: Bytes) {
+    return Bytes.wrap(Uint8Array.from([...this, ...bytes]));
+  }
+
+  public unwrap(encoding: BufferEncoding = "utf8") {
+    // Buffer in browser doesn't support base64url encoding.
+    // https://github.com/blakeembrey/universal-base64url/blob/master/src/index.ts
+    if (encoding === "base64url") {
+      return Buffer.from(this)
+        .toString("base64")
+        .replace(/\//g, "_")
+        .replace(/\+/g, "-")
+        .replace(/=+$/, "");
+    }
+    const result = Buffer.from(this).toString(encoding);
+    if (encoding === "hex") {
+      return `0x${result}`;
+    }
+    return result;
+  }
+}
