@@ -3,13 +3,17 @@ import { createWebAuthn, requestWebAuthn } from "@/webAuthn";
 import reactLogo from "@/assets/react.svg";
 import viteLogo from "/vite.svg";
 import "@/App.css";
-import type { BytesLike, B64UrlString } from "@/util/typing";
+import type { BytesLike, B64UrlString, HexString } from "@/util/typing";
 import { Bytes } from "@/util/bytes";
 import json from "@/util/json";
+import { fetchGitcoinPassportScore } from "@/gitcoin/index.ts";
 
 function App() {
   const [count, setCount] = useState(0);
   const [credentialId, setCredentialId] = useState<B64UrlString>("");
+  const [accountAddress, setAccountAddress] = useState<HexString>(
+    "0x982A41a1F3bC1F8bdB71F11751F3a71691794AfA"
+  );
 
   const registrationWebAuthn = async () => {
     const registrationResponse = await createWebAuthn();
@@ -41,6 +45,11 @@ function App() {
     );
   };
 
+  const getGitcoinScore = async () => {
+    const score = await fetchGitcoinPassportScore(accountAddress);
+    console.log(`[ttt] address: ${accountAddress} score: ${score}`);
+  };
+
   return (
     <>
       <div>
@@ -65,6 +74,9 @@ function App() {
         <button onClick={authenticationWebAuthn}>
           WebAuthn Authentication
         </button>
+      </div>
+      <div className="card">
+        <button onClick={getGitcoinScore}>Get score ({accountAddress})</button>
       </div>
       <p className="read-the-docs">
         Click on the Vite and React logos to learn more
